@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NBA EPV Life Of Deal Calculator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+
+        .controls {
+            padding: 25px 30px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .search-box {
+            flex: 1;
+            min-width: 250px;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        .search-box input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .filter-box {
+            min-width: 200px;
+        }
+
+        .filter-box select {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            font-size: 14px;
+            background: white;
+            cursor: pointer;
+            transition: border-color 0.3s;
+        }
+
+        .filter-box select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .loading {
+            padding: 60px;
+            text-align: center;
+            color: #6c757d;
+        }
+
+        .loading-spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .table-container {
+            overflow-x: auto;
+            padding: 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+
+        thead {
+            background: #2a5298;
+            color: white;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        th {
+            padding: 15px 12px;
+            text-align: left;
+            font-weight: 600;
+            cursor: pointer;
+            user-select: none;
+            white-space: nowrap;
+            transition: background 0.2s;
+        }
+
+        th:hover {
+            background: #1e3c72;
+        }
+
+        th::after {
+            content: ' ⇅';
+            opacity: 0.3;
+            font-size: 12px;
+        }
+
+        th.sorted-asc::after {
+            content: ' ▲';
+            opacity: 1;
+        }
+
+        th.sorted-desc::after {
+            content: ' ▼';
+            opacity: 1;
+        }
+
+        tbody tr {
+            border-bottom: 1px solid #dee2e6;
+            transition: background 0.2s;
+        }
+
+        tbody tr:hover {
+            background: #f8f9fa;
+        }
+
+        td {
+            padding: 15px 12px;
+        }
+
+        .logo-cell {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .team-logo {
+            width: 35px;
+            height: 35px;
+            object-fit: contain;
+            flex-shrink: 0;
+        }
+
+        .salary {
+            font-weight: 600;
+            color: #2a5298;
+        }
+
+        .positive {
+            color: #000;
+            font-weight: 600;
+        }
+
+        .negative {
+            color: #000;
+            font-weight: 600;
+        }
+
+        .contract-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .contract-rookie {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+
+        .contract-veteran {
+            background: #f3e5f5;
+            color: #7b1fa2;
+        }
+
+        .contract-max {
+            background: #fff3e0;
+            color: #f57c00;
+        }
+
+        .contract-standard {
+            background: #e8f5e9;
+            color: #388e3c;
+        }
+
+        .stats {
+            padding: 20px 30px;
+            background: #f8f9fa;
+            display: flex;
+            gap: 30px;
+            flex-wrap: wrap;
+            border-top: 1px solid #dee2e6;
+        }
+
+        .stat-item {
+            flex: 1;
+            min-width: 150px;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #6c757d;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #2a5298;
+        }
+
+        @media (max-width: 768px) {
+            .controls {
+                flex-direction: column;
+            }
+
+            .search-box, .filter-box {
+                width: 100%;
+            }
+
+            table {
+                font-size: 12px;
+            }
+
+            th, td {
+                padding: 10px 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏀 NBA EPV Life Of Deal Calculator</h1>
+            <p>Contract Value Over Life of Deals - Auto-Updates from Google Sheets</p>
+        </div>
+
+        <div class="loading" id="loadingSection">
+            <div class="loading-spinner"></div>
+            <p>Loading contract data...</p>
+        </div>
+
+        <div id="dataSection" style="display: none;">
+            <div class="controls">
+                <div class="search-box">
+                    <input type="text" id="searchInput" placeholder="🔍 Search by player name..." oninput="filterTable()">
+                </div>
+                <div class="filter-box">
+                    <select id="teamFilter" onchange="filterTable()">
+                        <option value="">All Teams</option>
+                    </select>
+                </div>
+                <div class="filter-box">
+                    <select id="contractFilter" onchange="filterTable()">
+                        <option value="">All Contract Types</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table id="dataTable">
+                    <thead>
+                        <tr>
+                            <th onclick="sortTable(0)">Contract Type</th>
+                            <th onclick="sortTable(1)">Player</th>
+                            <th onclick="sortTable(2)">Team</th>
+                            <th onclick="sortTable(3)">Years Under Contract</th>
+                            <th onclick="sortTable(4)">$ Under Contract</th>
+                            <th onclick="sortTable(5)">Projected Value</th>
+                            <th onclick="sortTable(6)">Value Difference</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody">
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="stats">
+                <div class="stat-item">
+                    <div class="stat-label">Total Players</div>
+                    <div class="stat-value" id="totalPlayers">0</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Total $ Under Contract</div>
+                    <div class="stat-value" id="totalUnderContract">$0</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Total Projected Value</div>
+                    <div class="stat-value" id="totalProjected">$0</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Total Value Difference</div>
+                    <div class="stat-value" id="totalDifference">$0</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let allData = [];
+        let filteredData = [];
+        let sortColumn = -1;
+        let sortAscending = true;
+        const GOOGLE_SHEETS_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQ9jJpsamj56RIR756PoJSOaRgPSc9yDZ5nkpWUjO-ECjRMGsBq_Q-_s4vPcpfCSg/pub?gid=1741426200&single=true&output=csv';
+
+        const teamNameToCode = {
+            'Atlanta Hawks': 'ATL', 'Boston Celtics': 'BOS', 'Brooklyn Nets': 'BKN',
+            'Charlotte Hornets': 'CHO', 'Chicago Bulls': 'CHI', 'Cleveland Cavaliers': 'CLE',
+            'Dallas Mavericks': 'DAL', 'Denver Nuggets': 'DEN', 'Detroit Pistons': 'DET',
+            'Golden State Warriors': 'GSW', 'Houston Rockets': 'HOU', 'Indiana Pacers': 'IND',
+            'LA Clippers': 'LAC', 'Los Angeles Clippers': 'LAC', 'LA Lakers': 'LAL',
+            'Los Angeles Lakers': 'LAL', 'Memphis Grizzlies': 'MEM', 'Miami Heat': 'MIA',
+            'Milwaukee Bucks': 'MIL', 'Minnesota Timberwolves': 'MIN', 'New Orleans Pelicans': 'NOP',
+            'New York Knicks': 'NYK', 'Oklahoma City Thunder': 'OKC', 'Orlando Magic': 'ORL',
+            'Philadelphia 76ers': 'PHI', 'Phoenix Suns': 'PHX', 'Portland Trail Blazers': 'POR',
+            'Sacramento Kings': 'SAC', 'San Antonio Spurs': 'SAS', 'Toronto Raptors': 'TOR',
+            'Utah Jazz': 'UTA', 'Washington Wizards': 'WAS'
+        };
+
+        function getTeamLogo(teamCode) {
+            const logoMap = {
+                'ATL': 'https://cdn.nba.com/logos/nba/1610612737/primary/L/logo.svg',
+                'BOS': 'https://cdn.nba.com/logos/nba/1610612738/primary/L/logo.svg',
+                'BKN': 'https://cdn.nba.com/logos/nba/1610612751/primary/L/logo.svg',
+                'CHO': 'https://cdn.nba.com/logos/nba/1610612766/primary/L/logo.svg',
+                'CHI': 'https://cdn.nba.com/logos/nba/1610612741/primary/L/logo.svg',
+                'CLE': 'https://cdn.nba.com/logos/nba/1610612739/primary/L/logo.svg',
+                'DAL': 'https://cdn.nba.com/logos/nba/1610612742/primary/L/logo.svg',
+                'DEN': 'https://cdn.nba.com/logos/nba/1610612743/primary/L/logo.svg',
+                'DET': 'https://cdn.nba.com/logos/nba/1610612765/primary/L/logo.svg',
+                'GSW': 'https://cdn.nba.com/logos/nba/1610612744/primary/L/logo.svg',
+                'HOU': 'https://cdn.nba.com/logos/nba/1610612745/primary/L/logo.svg',
+                'IND': 'https://cdn.nba.com/logos/nba/1610612754/primary/L/logo.svg',
+                'LAC': 'https://cdn.nba.com/logos/nba/1610612746/primary/L/logo.svg',
+                'LAL': 'https://cdn.nba.com/logos/nba/1610612747/primary/L/logo.svg',
+                'MEM': 'https://cdn.nba.com/logos/nba/1610612763/primary/L/logo.svg',
+                'MIA': 'https://cdn.nba.com/logos/nba/1610612748/primary/L/logo.svg',
+                'MIL': 'https://cdn.nba.com/logos/nba/1610612749/primary/L/logo.svg',
+                'MIN': 'https://cdn.nba.com/logos/nba/1610612750/primary/L/logo.svg',
+                'NOP': 'https://cdn.nba.com/logos/nba/1610612740/primary/L/logo.svg',
+                'NYK': 'https://cdn.nba.com/logos/nba/1610612752/primary/L/logo.svg',
+                'OKC': 'https://cdn.nba.com/logos/nba/1610612760/primary/L/logo.svg',
+                'ORL': 'https://cdn.nba.com/logos/nba/1610612753/primary/L/logo.svg',
+                'PHI': 'https://cdn.nba.com/logos/nba/1610612755/primary/L/logo.svg',
+                'PHX': 'https://cdn.nba.com/logos/nba/1610612756/primary/L/logo.svg',
+                'POR': 'https://cdn.nba.com/logos/nba/1610612757/primary/L/logo.svg',
+                'SAC': 'https://cdn.nba.com/logos/nba/1610612758/primary/L/logo.svg',
+                'SAS': 'https://cdn.nba.com/logos/nba/1610612759/primary/L/logo.svg',
+                'TOR': 'https://cdn.nba.com/logos/nba/1610612761/primary/L/logo.svg',
+                'UTA': 'https://cdn.nba.com/logos/nba/1610612762/primary/L/logo.svg',
+                'WAS': 'https://cdn.nba.com/logos/nba/1610612764/primary/L/logo.svg'
+            };
+            return logoMap[teamCode] || '';
+        }
+
+        window.addEventListener('DOMContentLoaded', function() {
+            loadGoogleSheetsData();
+        });
+
+        function loadGoogleSheetsData() {
+            Papa.parse(GOOGLE_SHEETS_URL, {
+                download: true,
+                header: true,
+                skipEmptyLines: true,
+                dynamicTyping: false,
+                complete: function(results) {
+                    if (results.data && results.data.length > 0) {
+                        processData(results.data);
+                        document.getElementById('loadingSection').style.display = 'none';
+                        document.getElementById('dataSection').style.display = 'block';
+                        renderTable();
+                        updateStats();
+                    } else {
+                        showError('No data received');
+                    }
+                },
+                error: function(error) {
+                    console.error('Error:', error);
+                    showError('Error loading data: ' + error.message);
+                }
+            });
+        }
+
+        function showError(message) {
+            document.getElementById('loadingSection').innerHTML = `
+                <div style="padding: 60px; text-align: center;">
+                    <p style="color: #dc3545; font-weight: 600; margin-bottom: 10px;">❌ ${message}</p>
+                    <button onclick="location.reload()" style="margin-top: 20px; padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer;">
+                        Retry
+                    </button>
+                </div>
+            `;
+        }
+
+        function processData(data) {
+            allData = data;
+            filteredData = [...data];
+
+            const teams = [...new Set(data.map(row => row.Team).filter(t => t))].sort();
+            const contracts = [...new Set(data.map(row => row['Contract Type']).filter(c => c))].sort();
+
+            const teamFilter = document.getElementById('teamFilter');
+            teamFilter.innerHTML = '<option value="">All Teams</option>';
+            teams.forEach(team => {
+                teamFilter.innerHTML += `<option value="${team}">${team}</option>`;
+            });
+
+            const contractFilter = document.getElementById('contractFilter');
+            contractFilter.innerHTML = '<option value="">All Contract Types</option>';
+            contracts.forEach(contract => {
+                contractFilter.innerHTML += `<option value="${contract}">${contract}</option>`;
+            });
+        }
+
+        function getContractClass(contractType) {
+            if (!contractType) return 'contract-standard';
+            const type = contractType.toLowerCase();
+            if (type.includes('rookie')) return 'contract-rookie';
+            if (type.includes('veteran')) return 'contract-veteran';
+            if (type.includes('max')) return 'contract-max';
+            return 'contract-standard';
+        }
+
+        function parseNumber(value) {
+            if (!value && value !== 0) return 0;
+            let str = value.toString().replace(/[$,"\s]/g, '');
+            if (str.startsWith('(') && str.endsWith(')')) {
+                str = '-' + str.slice(1, -1);
+            }
+            const num = parseFloat(str);
+            return isNaN(num) ? 0 : num;
+        }
+
+        function formatCurrency(value) {
+            const num = parseNumber(value);
+            return '$' + num.toLocaleString('en-US', { maximumFractionDigits: 0 });
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+
+            let maxPositiveDiff = 0, maxNegativeDiff = 0;
+            
+            filteredData.forEach(row => {
+                const valueDiffNum = parseNumber(row['Value Difference']);
+                if (valueDiffNum > maxPositiveDiff) maxPositiveDiff = valueDiffNum;
+                if (valueDiffNum < maxNegativeDiff) maxNegativeDiff = valueDiffNum;
+            });
+
+            filteredData.forEach(row => {
+                const tr = document.createElement('tr');
+                
+                const contractType = row['Contract Type'] || '';
+                const player = row['Player'] || '';
+                const team = row['Team'] || '';
+                const years = row['Years Under Contract'] || '';
+                const underContract = row['$ Under Contract'] || 0;
+                const projectedValue = row['Projected Value Over Life of Contract(s)'] || 0;
+                const valueDiff = row['Value Difference'] || 0;
+
+                const valueDiffNum = parseNumber(valueDiff);
+                const valueDiffClass = valueDiffNum > 0 ? 'positive' : valueDiffNum < 0 ? 'negative' : '';
+
+                let valueBgColor = '';
+                if (valueDiffNum > 0 && maxPositiveDiff > 0) {
+                    const intensity = valueDiffNum / maxPositiveDiff;
+                    valueBgColor = `background-color: rgba(40, ${Math.round(40 + intensity * 120) + 127}, 69, ${0.2 + intensity * 0.6});`;
+                } else if (valueDiffNum < 0 && maxNegativeDiff < 0) {
+                    const intensity = valueDiffNum / maxNegativeDiff;
+                    valueBgColor = `background-color: rgba(${Math.round(220 - intensity * 100)}, 60, 69, ${0.2 + intensity * 0.6});`;
+                }
+
+                const teamCode = teamNameToCode[team] || team;
+                const logoUrl = getTeamLogo(teamCode);
+
+                tr.innerHTML = `
+                    <td>
+                        <div class="logo-cell">
+                            ${logoUrl ? `<img src="${logoUrl}" alt="${team}" class="team-logo">` : ''}
+                            <span class="contract-badge ${getContractClass(contractType)}">${contractType}</span>
+                        </div>
+                    </td>
+                    <td><strong>${player}</strong></td>
+                    <td><strong>${team}</strong></td>
+                    <td>${years}</td>
+                    <td class="salary">${formatCurrency(underContract)}</td>
+                    <td class="salary">${formatCurrency(projectedValue)}</td>
+                    <td class="${valueDiffClass}" style="${valueBgColor}">${formatCurrency(valueDiff)}</td>
+                `;
+                
+                tbody.appendChild(tr);
+            });
+        }
+
+        function filterTable() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const teamFilter = document.getElementById('teamFilter').value;
+            const contractFilter = document.getElementById('contractFilter').value;
+
+            filteredData = allData.filter(row => {
+                const matchesSearch = !searchTerm || (row.Player || '').toLowerCase().includes(searchTerm);
+                const matchesTeam = !teamFilter || row.Team === teamFilter;
+                const matchesContract = !contractFilter || row['Contract Type'] === contractFilter;
+                return matchesSearch && matchesTeam && matchesContract;
+            });
+
+            renderTable();
+            updateStats();
+        }
+
+        function sortTable(columnIndex) {
+            const headers = document.querySelectorAll('th');
+            
+            if (sortColumn === columnIndex) {
+                sortAscending = !sortAscending;
+            } else {
+                sortColumn = columnIndex;
+                sortAscending = true;
+            }
+
+            headers.forEach((h, i) => {
+                h.classList.remove('sorted-asc', 'sorted-desc');
+                if (i === columnIndex) {
+                    h.classList.add(sortAscending ? 'sorted-asc' : 'sorted-desc');
+                }
+            });
+
+            const columnMap = ['Contract Type', 'Player', 'Team', 'Years Under Contract', 
+                             '$ Under Contract', 'Projected Value Over Life of Contract(s)', 'Value Difference'];
+            const key = columnMap[columnIndex];
+
+            filteredData.sort((a, b) => {
+                let aVal = a[key];
+                let bVal = b[key];
+
+                if (columnIndex >= 3) {
+                    aVal = parseNumber(aVal);
+                    bVal = parseNumber(bVal);
+                } else {
+                    aVal = (aVal || '').toString().toLowerCase();
+                    bVal = (bVal || '').toString().toLowerCase();
+                }
+
+                if (aVal < bVal) return sortAscending ? -1 : 1;
+                if (aVal > bVal) return sortAscending ? 1 : -1;
+                return 0;
+            });
+
+            renderTable();
+        }
+
+        function updateStats() {
+            const totalPlayers = filteredData.length;
+            let totalUnderContract = 0;
+            let totalProjected = 0;
+            let totalDifference = 0;
+            
+            filteredData.forEach(row => {
+                totalUnderContract += parseNumber(row['$ Under Contract']);
+                totalProjected += parseNumber(row['Projected Value Over Life of Contract(s)']);
+                totalDifference += parseNumber(row['Value Difference']);
+            });
+
+            document.getElementById('totalPlayers').textContent = totalPlayers.toLocaleString();
+            document.getElementById('totalUnderContract').textContent = formatCurrency(totalUnderContract);
+            document.getElementById('totalProjected').textContent = formatCurrency(totalProjected);
+            document.getElementById('totalDifference').textContent = formatCurrency(totalDifference);
+        }
+    </script>
+</body>
+</html>
