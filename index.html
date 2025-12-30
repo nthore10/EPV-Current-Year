@@ -282,7 +282,8 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>Estimated Player Value (EPV) - Current Year</h1>
+            <h1>🏀 NBA Contract Value Calculator</h1>
+            <p>Interactive Player Financial Data Dashboard - Auto-Updates from Google Sheets</p>
         </div>
 
         <div class="loading" id="loadingSection">
@@ -432,15 +433,29 @@
                 if (char === '"') {
                     inQuotes = !inQuotes;
                 } else if (char === ',' && !inQuotes) {
-                    result.push(current.trim());
+                    result.push(current.trim().replace(/^"|"$/g, ''));
                     current = '';
                 } else {
                     current += char;
                 }
             }
-            result.push(current.trim());
+            result.push(current.trim().replace(/^"|"$/g, ''));
             
             return result;
+        }
+
+        function parseNumber(value) {
+            if (!value && value !== 0) return 0;
+            // Remove quotes, dollar signs, commas, parentheses
+            let str = value.toString().replace(/["$,]/g, '').trim();
+            
+            // Check if number is in parentheses (accounting format for negative)
+            if (str.startsWith('(') && str.endsWith(')')) {
+                str = '-' + str.slice(1, -1);
+            }
+            
+            const num = parseFloat(str);
+            return isNaN(num) ? 0 : num;
         }
 
         window.addEventListener('DOMContentLoaded', function() {
@@ -513,20 +528,182 @@
         }
 
         function formatCurrency(value) {
-            if (!value && value !== 0) return '-';
-            const num = typeof value === 'string' ? parseFloat(value.replace(/[^0-9.-]/g, '')) : value;
-            if (isNaN(num)) return '-';
-            return '$' + num.toLocaleString('en-US', { maximumFractionDigits: 0 });
+            const num = parseNumber(value);
+            if (num === 0 && !value) return '-';
+            return '
+
+        function renderTable() {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+
+            let maxPositiveDiff = 0;
+            let maxNegativeDiff = 0;
+            let maxPositiveCap = 0;
+            let maxNegativeCap = 0;
+            
+            filteredData.forEach(row => {
+                const valueDiff = row['Value Difference'] || 0;
+                const valueDiffNum = parseNumber(valueDiff);
+                if (valueDiffNum > maxPositiveDiff) maxPositiveDiff = valueDiffNum;
+                if (valueDiffNum < maxNegativeDiff) maxNegativeDiff = valueDiffNum;
+
+                const capDiff = row['% of Cap Value Difference'] || 0;
+                const capDiffNum = parseNumber(capDiff);
+                if (capDiffNum > maxPositiveCap) maxPositiveCap = capDiffNum;
+                if (capDiffNum < maxNegativeCap) maxNegativeCap = capDiffNum;
+            });
+
+            filteredData.forEach(row => {
+                const tr = document.createElement('tr');
+                
+                const contractType = row['Contract Type'] || '';
+                const player = row['Player'] || '';
+                const team = row['Team'] || '';
+                const currentSalary = row['Current Year Salary'] || 0;
+                const capPercent1 = row['% of Cap'] || 0;
+                const projectedValue = row['Current Year Projected Value'] || 0;
+                const capPercent2 = row['EPV % of Cap'] || 0;
+                const valueDiff = row['Value Difference'] || 0;
+                const capDiff = row['% of Cap Value Difference'] || 0;
+
+                const valueDiffNum = parseNumber(valueDiff);
+                const capDiffNum = parseNumber(capDiff);
+                
+                const valueDiffClass = valueDiffNum > 0 ? 'positive' : valueDiffNum < 0 ? 'negative' : '';
+                const capDiffClass = capDiffNum > 0 ? 'positive' : capDiffNum < 0 ? 'negative' : '';
+
+                let valueBgColor = '';
+                if (valueDiffNum > 0 && maxPositiveDiff > 0) {
+                    const intensity = valueDiffNum / maxPositiveDiff;
+                    const greenValue = Math.round(40 + (intensity * 120));
+                    valueBgColor = `background-color: rgba(40, ${greenValue + 127}, 69, ${0.2 + intensity * 0.6});`;
+                } else if (valueDiffNum < 0 && maxNegativeDiff < 0) {
+                    const intensity = valueDiffNum / maxNegativeDiff;
+                    const redValue = Math.round(220 - (intensity * 100));
+                    valueBgColor = `background-color: rgba(${redValue}, 60, 69, ${0.2 + intensity * 0.6});`;
+                }
+
+                let capBgColor = '';
+                if (capDiffNum > 0 && maxPositiveCap > 0) {
+                    const intensity = capDiffNum / maxPositiveCap;
+                    const greenValue = Math.round(40 + (intensity * 120));
+                    capBgColor = `background-color: rgba(40, ${greenValue + 127}, 69, ${0.2 + intensity * 0.6});`;
+                } else if (capDiffNum < 0 && maxNegativeCap < 0) {
+                    const intensity = capDiffNum / maxNegativeCap;
+                    const redValue = Math.round(220 - (intensity * 100));
+                    capBgColor = `background-color: rgba(${redValue}, 60, 69, ${0.2 + intensity * 0.6});`;
+                }
+
+                const teamCode = teamNameToCode[team] || team;
+                const logoUrl = getTeamLogo(teamCode);
+
+                tr.innerHTML = `
+                    <td>
+                        <div class="logo-cell">
+                            ${logoUrl ? `<img src="${logoUrl}" alt="${team}" class="team-logo">` : ''}
+                            <span class="contract-badge ${getContractClass(contractType)}">${contractType}</span>
+                        </div>
+                    </td>
+                    <td><strong>${player}</strong></td>
+                    <td><strong>${team}</strong></td>
+                    <td class="salary">${formatCurrency(currentSalary)}</td>
+                    <td>${formatPercent(capPercent1)}</td>
+                    <td class="salary">${formatCurrency(projectedValue)}</td>
+                    <td>${formatPercent(capPercent2)}</td>
+                    <td class="${valueDiffClass}" style="${valueBgColor}">${formatCurrency(valueDiff)}</td>
+                    <td class="${capDiffClass}" style="${capBgColor}">${formatPercent(capDiff)}</td>
+                `;
+                
+                tbody.appendChild(tr);
+            });
+        }
+
+        function filterTable() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const teamFilter = document.getElementById('teamFilter').value;
+            const contractFilter = document.getElementById('contractFilter').value;
+
+            filteredData = allData.filter(row => {
+                const matchesSearch = !searchTerm || (row.Player || '').toLowerCase().includes(searchTerm);
+                const matchesTeam = !teamFilter || row.Team === teamFilter;
+                const matchesContract = !contractFilter || row['Contract Type'] === contractFilter;
+                return matchesSearch && matchesTeam && matchesContract;
+            });
+
+            renderTable();
+            updateStats();
+        }
+
+        function sortTable(columnIndex) {
+            const headers = document.querySelectorAll('th');
+            
+            if (sortColumn === columnIndex) {
+                sortAscending = !sortAscending;
+            } else {
+                sortColumn = columnIndex;
+                sortAscending = true;
+            }
+
+            headers.forEach((h, i) => {
+                h.classList.remove('sorted-asc', 'sorted-desc');
+                if (i === columnIndex) {
+                    h.classList.add(sortAscending ? 'sorted-asc' : 'sorted-desc');
+                }
+            });
+
+            const columnMap = ['Contract Type', 'Player', 'Team', 'Current Year Salary', '% of Cap', 
+                             'Current Year Projected Value', 'EPV % of Cap', 'Value Difference', '% of Cap Value Difference'];
+            const key = columnMap[columnIndex];
+
+            filteredData.sort((a, b) => {
+                let aVal = a[key];
+                let bVal = b[key];
+
+                if (columnIndex >= 3) {
+                    aVal = parseNumber(a[key]);
+                    bVal = parseNumber(b[key]);
+                } else {
+                    aVal = (aVal || '').toString().toLowerCase();
+                    bVal = (bVal || '').toString().toLowerCase();
+                }
+
+                if (aVal < bVal) return sortAscending ? -1 : 1;
+                if (aVal > bVal) return sortAscending ? 1 : -1;
+                return 0;
+            });
+
+            renderTable();
+        }
+
+        function updateStats() {
+            const totalPlayers = filteredData.length;
+            
+            let totalSalary = 0;
+            filteredData.forEach(row => {
+                const salary = row['Current Year Salary'];
+                const num = parseNumber(salary);
+                totalSalary += num;
+            });
+
+            const avgSalary = totalPlayers > 0 ? totalSalary / totalPlayers : 0;
+
+            document.getElementById('totalPlayers').textContent = totalPlayers.toLocaleString();
+            document.getElementById('avgSalary').textContent = formatCurrency(avgSalary);
+            document.getElementById('totalPayroll').textContent = formatCurrency(totalSalary);
+        }
+    </script>
+</body>
+</html> + num.toLocaleString('en-US', { maximumFractionDigits: 0 });
         }
 
         function formatPercent(value) {
-            if (!value && value !== 0) return '-';
-            let num = typeof value === 'string' ? parseFloat(value.replace(/[^0-9.-]/g, '')) : value;
-            if (isNaN(num)) return '-';
-            if (Math.abs(num) < 1) {
-                num = num * 100;
+            const num = parseNumber(value);
+            if (num === 0 && !value) return '-';
+            let finalNum = num;
+            if (Math.abs(num) < 1 && num !== 0) {
+                finalNum = num * 100;
             }
-            return num.toFixed(2) + '%';
+            return finalNum.toFixed(2) + '%';
         }
 
         function renderTable() {
