@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NBA Contract Value Calculator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -283,7 +284,7 @@
     <div class="container">
         <div class="header">
             <h1>🏀 NBA Contract Value Calculator</h1>
-            <p>Interactive Player Financial Data Dashboard - Auto-Updates from Google Sheets</p>
+            <p>Interactive Player Financial Data Dashboard</p>
         </div>
 
         <div class="loading" id="loadingSection">
@@ -318,7 +319,7 @@
                             <th onclick="sortTable(3)">Current Salary</th>
                             <th onclick="sortTable(4)">% of Cap</th>
                             <th onclick="sortTable(5)">Projected Value</th>
-                            <th onclick="sortTable(6)">% of Cap</th>
+                            <th onclick="sortTable(6)">EPV % of Cap</th>
                             <th onclick="sortTable(7)">Value Difference</th>
                             <th onclick="sortTable(8)">% Cap Difference</th>
                         </tr>
@@ -402,76 +403,19 @@
             return logoMap[teamCode] || '';
         }
 
-        function parseCSV(text) {
-            const lines = text.split('\n');
-            const result = [];
-            
-            // Parse first line for headers
-            const headers = parseCSVLine(lines[0]);
-            
-            // Parse data lines
-            for (let i = 1; i < lines.length; i++) {
-                if (!lines[i].trim()) continue;
-                const values = parseCSVLine(lines[i]);
-                const row = {};
-                headers.forEach((header, index) => {
-                    row[header] = values[index] || '';
-                });
-                result.push(row);
-            }
-            return result;
-        }
-
-        function parseCSVLine(line) {
-            const result = [];
-            let current = '';
-            let inQuotes = false;
-            
-            for (let i = 0; i < line.length; i++) {
-                const char = line[i];
-                
-                if (char === '"') {
-                    inQuotes = !inQuotes;
-                } else if (char === ',' && !inQuotes) {
-                    result.push(current.trim().replace(/^"|"$/g, ''));
-                    current = '';
-                } else {
-                    current += char;
-                }
-            }
-            result.push(current.trim().replace(/^"|"$/g, ''));
-            
-            return result;
-        }
-
-        function parseNumber(value) {
-            if (!value && value !== 0) return 0;
-            // Remove quotes, dollar signs, commas, parentheses
-            let str = value.toString().replace(/["$,]/g, '').trim();
-            
-            // Check if number is in parentheses (accounting format for negative)
-            if (str.startsWith('(') && str.endsWith(')')) {
-                str = '-' + str.slice(1, -1);
-            }
-            
-            const num = parseFloat(str);
-            return isNaN(num) ? 0 : num;
-        }
-
         window.addEventListener('DOMContentLoaded', function() {
             loadGoogleSheetsData();
         });
 
         function loadGoogleSheetsData() {
-            fetch(GOOGLE_SHEETS_URL)
-                .then(response => {
-                    if (!response.ok) throw new Error('Network response was not ok');
-                    return response.text();
-                })
-                .then(csvText => {
-                    const data = parseCSV(csvText);
-                    if (data && data.length > 0) {
-                        processData(data);
+            Papa.parse(GOOGLE_SHEETS_URL, {
+                download: true,
+                header: true,
+                skipEmptyLines: true,
+                dynamicTyping: false,
+                complete: function(results) {
+                    if (results.data && results.data.length > 0) {
+                        processData(results.data);
                         document.getElementById('loadingSection').style.display = 'none';
                         document.getElementById('dataSection').style.display = 'block';
                         renderTable();
@@ -479,18 +423,18 @@
                     } else {
                         showError('No data received');
                     }
-                })
-                .catch(error => {
+                },
+                error: function(error) {
                     console.error('Error:', error);
                     showError('Error loading data: ' + error.message);
-                });
+                }
+            });
         }
 
         function showError(message) {
             document.getElementById('loadingSection').innerHTML = `
                 <div style="padding: 60px; text-align: center;">
                     <p style="color: #dc3545; font-weight: 600; margin-bottom: 10px;">❌ ${message}</p>
-                    <p style="color: #6c757d; font-size: 14px;">Please check your Google Sheets publish settings</p>
                     <button onclick="location.reload()" style="margin-top: 20px; padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer;">
                         Retry
                     </button>
@@ -527,28 +471,43 @@
             return 'contract-standard';
         }
 
+        function parseNumber(value) {
+            if (!value && value !== 0) return 0;
+            let str = value.toString().replace(/[$,"\s]/g, '');
+            if (str.startsWith('(') && str.endsWith(')')) {
+                str = '-' + str.slice(1, -1);
+            }
+            const num = parseFloat(str);
+            return isNaN(num) ? 0 : num;
+        }
+
         function formatCurrency(value) {
             const num = parseNumber(value);
-            if (num === 0 && !value) return '-';
-            return '
+            return '$' + num.toLocaleString('en-US', { maximumFractionDigits: 0 });
+        }
+
+        function formatPercent(value) {
+            const num = parseNumber(value);
+            let finalNum = num;
+            if (Math.abs(num) < 1 && num !== 0) {
+                finalNum = num * 100;
+            }
+            return finalNum.toFixed(2) + '%';
+        }
 
         function renderTable() {
             const tbody = document.getElementById('tableBody');
             tbody.innerHTML = '';
 
-            let maxPositiveDiff = 0;
-            let maxNegativeDiff = 0;
-            let maxPositiveCap = 0;
-            let maxNegativeCap = 0;
+            let maxPositiveDiff = 0, maxNegativeDiff = 0;
+            let maxPositiveCap = 0, maxNegativeCap = 0;
             
             filteredData.forEach(row => {
-                const valueDiff = row['Value Difference'] || 0;
-                const valueDiffNum = parseNumber(valueDiff);
+                const valueDiffNum = parseNumber(row['Value Difference']);
                 if (valueDiffNum > maxPositiveDiff) maxPositiveDiff = valueDiffNum;
                 if (valueDiffNum < maxNegativeDiff) maxNegativeDiff = valueDiffNum;
 
-                const capDiff = row['% of Cap Value Difference'] || 0;
-                const capDiffNum = parseNumber(capDiff);
+                const capDiffNum = parseNumber(row['% of Cap Value Difference']);
                 if (capDiffNum > maxPositiveCap) maxPositiveCap = capDiffNum;
                 if (capDiffNum < maxNegativeCap) maxNegativeCap = capDiffNum;
             });
@@ -575,23 +534,19 @@
                 let valueBgColor = '';
                 if (valueDiffNum > 0 && maxPositiveDiff > 0) {
                     const intensity = valueDiffNum / maxPositiveDiff;
-                    const greenValue = Math.round(40 + (intensity * 120));
-                    valueBgColor = `background-color: rgba(40, ${greenValue + 127}, 69, ${0.2 + intensity * 0.6});`;
+                    valueBgColor = `background-color: rgba(40, ${Math.round(40 + intensity * 120) + 127}, 69, ${0.2 + intensity * 0.6});`;
                 } else if (valueDiffNum < 0 && maxNegativeDiff < 0) {
                     const intensity = valueDiffNum / maxNegativeDiff;
-                    const redValue = Math.round(220 - (intensity * 100));
-                    valueBgColor = `background-color: rgba(${redValue}, 60, 69, ${0.2 + intensity * 0.6});`;
+                    valueBgColor = `background-color: rgba(${Math.round(220 - intensity * 100)}, 60, 69, ${0.2 + intensity * 0.6});`;
                 }
 
                 let capBgColor = '';
                 if (capDiffNum > 0 && maxPositiveCap > 0) {
                     const intensity = capDiffNum / maxPositiveCap;
-                    const greenValue = Math.round(40 + (intensity * 120));
-                    capBgColor = `background-color: rgba(40, ${greenValue + 127}, 69, ${0.2 + intensity * 0.6});`;
+                    capBgColor = `background-color: rgba(40, ${Math.round(40 + intensity * 120) + 127}, 69, ${0.2 + intensity * 0.6});`;
                 } else if (capDiffNum < 0 && maxNegativeCap < 0) {
                     const intensity = capDiffNum / maxNegativeCap;
-                    const redValue = Math.round(220 - (intensity * 100));
-                    capBgColor = `background-color: rgba(${redValue}, 60, 69, ${0.2 + intensity * 0.6});`;
+                    capBgColor = `background-color: rgba(${Math.round(220 - intensity * 100)}, 60, 69, ${0.2 + intensity * 0.6});`;
                 }
 
                 const teamCode = teamNameToCode[team] || team;
@@ -660,8 +615,8 @@
                 let bVal = b[key];
 
                 if (columnIndex >= 3) {
-                    aVal = parseNumber(a[key]);
-                    bVal = parseNumber(b[key]);
+                    aVal = parseNumber(aVal);
+                    bVal = parseNumber(bVal);
                 } else {
                     aVal = (aVal || '').toString().toLowerCase();
                     bVal = (bVal || '').toString().toLowerCase();
@@ -677,192 +632,10 @@
 
         function updateStats() {
             const totalPlayers = filteredData.length;
-            
             let totalSalary = 0;
-            filteredData.forEach(row => {
-                const salary = row['Current Year Salary'];
-                const num = parseNumber(salary);
-                totalSalary += num;
-            });
-
-            const avgSalary = totalPlayers > 0 ? totalSalary / totalPlayers : 0;
-
-            document.getElementById('totalPlayers').textContent = totalPlayers.toLocaleString();
-            document.getElementById('avgSalary').textContent = formatCurrency(avgSalary);
-            document.getElementById('totalPayroll').textContent = formatCurrency(totalSalary);
-        }
-    </script>
-</body>
-</html> + num.toLocaleString('en-US', { maximumFractionDigits: 0 });
-        }
-
-        function formatPercent(value) {
-            const num = parseNumber(value);
-            if (num === 0 && !value) return '-';
-            let finalNum = num;
-            if (Math.abs(num) < 1 && num !== 0) {
-                finalNum = num * 100;
-            }
-            return finalNum.toFixed(2) + '%';
-        }
-
-        function renderTable() {
-            const tbody = document.getElementById('tableBody');
-            tbody.innerHTML = '';
-
-            let maxPositiveDiff = 0;
-            let maxNegativeDiff = 0;
-            let maxPositiveCap = 0;
-            let maxNegativeCap = 0;
             
             filteredData.forEach(row => {
-                const valueDiff = row['Value Difference'] || 0;
-                const valueDiffNum = typeof valueDiff === 'string' ? parseFloat(valueDiff.replace(/[^0-9.-]/g, '')) : valueDiff;
-                if (!isNaN(valueDiffNum)) {
-                    if (valueDiffNum > maxPositiveDiff) maxPositiveDiff = valueDiffNum;
-                    if (valueDiffNum < maxNegativeDiff) maxNegativeDiff = valueDiffNum;
-                }
-
-                const capDiff = row['% of Cap Value Difference'] || 0;
-                const capDiffNum = typeof capDiff === 'string' ? parseFloat(capDiff.replace(/[^0-9.-]/g, '')) : capDiff;
-                if (!isNaN(capDiffNum)) {
-                    if (capDiffNum > maxPositiveCap) maxPositiveCap = capDiffNum;
-                    if (capDiffNum < maxNegativeCap) maxNegativeCap = capDiffNum;
-                }
-            });
-
-            filteredData.forEach(row => {
-                const tr = document.createElement('tr');
-                
-                const contractType = row['Contract Type'] || '';
-                const player = row['Player'] || '';
-                const team = row['Team'] || '';
-                const currentSalary = row['Current Year Salary'] || 0;
-                const capPercent1 = row['% of Cap'] || 0;
-                const projectedValue = row['Current Year Projected Value'] || 0;
-                const capPercent2 = row['EPV % of Cap'] || 0;
-                const valueDiff = row['Value Difference'] || 0;
-                const capDiff = row['% of Cap Value Difference'] || 0;
-
-                const valueDiffNum = typeof valueDiff === 'string' ? parseFloat(valueDiff.replace(/[^0-9.-]/g, '')) : valueDiff;
-                const capDiffNum = typeof capDiff === 'string' ? parseFloat(capDiff.replace(/[^0-9.-]/g, '')) : capDiff;
-                
-                const valueDiffClass = valueDiffNum > 0 ? 'positive' : valueDiffNum < 0 ? 'negative' : '';
-                const capDiffClass = capDiffNum > 0 ? 'positive' : capDiffNum < 0 ? 'negative' : '';
-
-                let valueBgColor = '';
-                if (valueDiffNum > 0 && maxPositiveDiff > 0) {
-                    const intensity = valueDiffNum / maxPositiveDiff;
-                    const greenValue = Math.round(40 + (intensity * 120));
-                    valueBgColor = `background-color: rgba(40, ${greenValue + 127}, 69, ${0.2 + intensity * 0.6});`;
-                } else if (valueDiffNum < 0 && maxNegativeDiff < 0) {
-                    const intensity = valueDiffNum / maxNegativeDiff;
-                    const redValue = Math.round(220 - (intensity * 100));
-                    valueBgColor = `background-color: rgba(${redValue}, 60, 69, ${0.2 + intensity * 0.6});`;
-                }
-
-                let capBgColor = '';
-                if (capDiffNum > 0 && maxPositiveCap > 0) {
-                    const intensity = capDiffNum / maxPositiveCap;
-                    const greenValue = Math.round(40 + (intensity * 120));
-                    capBgColor = `background-color: rgba(40, ${greenValue + 127}, 69, ${0.2 + intensity * 0.6});`;
-                } else if (capDiffNum < 0 && maxNegativeCap < 0) {
-                    const intensity = capDiffNum / maxNegativeCap;
-                    const redValue = Math.round(220 - (intensity * 100));
-                    capBgColor = `background-color: rgba(${redValue}, 60, 69, ${0.2 + intensity * 0.6});`;
-                }
-
-                const teamCode = teamNameToCode[team] || team;
-                const logoUrl = getTeamLogo(teamCode);
-
-                tr.innerHTML = `
-                    <td>
-                        <div class="logo-cell">
-                            ${logoUrl ? `<img src="${logoUrl}" alt="${team}" class="team-logo">` : ''}
-                            <span class="contract-badge ${getContractClass(contractType)}">${contractType}</span>
-                        </div>
-                    </td>
-                    <td><strong>${player}</strong></td>
-                    <td><strong>${team}</strong></td>
-                    <td class="salary">${formatCurrency(currentSalary)}</td>
-                    <td>${formatPercent(capPercent1)}</td>
-                    <td class="salary">${formatCurrency(projectedValue)}</td>
-                    <td>${formatPercent(capPercent2)}</td>
-                    <td class="${valueDiffClass}" style="${valueBgColor}">${formatCurrency(valueDiff)}</td>
-                    <td class="${capDiffClass}" style="${capBgColor}">${formatPercent(capDiff)}</td>
-                `;
-                
-                tbody.appendChild(tr);
-            });
-        }
-
-        function filterTable() {
-            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
-            const teamFilter = document.getElementById('teamFilter').value;
-            const contractFilter = document.getElementById('contractFilter').value;
-
-            filteredData = allData.filter(row => {
-                const matchesSearch = !searchTerm || (row.Player || '').toLowerCase().includes(searchTerm);
-                const matchesTeam = !teamFilter || row.Team === teamFilter;
-                const matchesContract = !contractFilter || row['Contract Type'] === contractFilter;
-                return matchesSearch && matchesTeam && matchesContract;
-            });
-
-            renderTable();
-            updateStats();
-        }
-
-        function sortTable(columnIndex) {
-            const headers = document.querySelectorAll('th');
-            
-            if (sortColumn === columnIndex) {
-                sortAscending = !sortAscending;
-            } else {
-                sortColumn = columnIndex;
-                sortAscending = true;
-            }
-
-            headers.forEach((h, i) => {
-                h.classList.remove('sorted-asc', 'sorted-desc');
-                if (i === columnIndex) {
-                    h.classList.add(sortAscending ? 'sorted-asc' : 'sorted-desc');
-                }
-            });
-
-            const columnMap = ['Contract Type', 'Player', 'Team', 'Current Year Salary', '% of Cap', 
-                             'Current Year Projected Value', 'EPV % of Cap', 'Value Difference', '% of Cap Value Difference'];
-            const key = columnMap[columnIndex];
-
-            filteredData.sort((a, b) => {
-                let aVal = a[key];
-                let bVal = b[key];
-
-                if (columnIndex >= 3) {
-                    aVal = typeof aVal === 'string' ? parseFloat(aVal.replace(/[^0-9.-]/g, '')) : aVal;
-                    bVal = typeof bVal === 'string' ? parseFloat(bVal.replace(/[^0-9.-]/g, '')) : bVal;
-                    aVal = isNaN(aVal) ? 0 : aVal;
-                    bVal = isNaN(bVal) ? 0 : bVal;
-                } else {
-                    aVal = (aVal || '').toString().toLowerCase();
-                    bVal = (bVal || '').toString().toLowerCase();
-                }
-
-                if (aVal < bVal) return sortAscending ? -1 : 1;
-                if (aVal > bVal) return sortAscending ? 1 : -1;
-                return 0;
-            });
-
-            renderTable();
-        }
-
-        function updateStats() {
-            const totalPlayers = filteredData.length;
-            
-            let totalSalary = 0;
-            filteredData.forEach(row => {
-                const salary = row['Current Year Salary'];
-                const num = typeof salary === 'string' ? parseFloat(salary.replace(/[^0-9.-]/g, '')) : salary;
-                if (!isNaN(num)) totalSalary += num;
+                totalSalary += parseNumber(row['Current Year Salary']);
             });
 
             const avgSalary = totalPlayers > 0 ? totalSalary / totalPlayers : 0;
