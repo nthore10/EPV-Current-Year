@@ -282,8 +282,7 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>🏀 NBA Contract Value Calculator</h1>
-            <p>Interactive Player Financial Data Dashboard - Auto-Updates from Google Sheets</p>
+            <h1>Estimated Player Value (EPV) - Current Year</h1>
         </div>
 
         <div class="loading" id="loadingSection">
@@ -564,7 +563,7 @@
                 const currentSalary = row['Current Year Salary'] || 0;
                 const capPercent1 = row['% of Cap'] || 0;
                 const projectedValue = row['Current Year Projected Value'] || 0;
-                const capPercent2 = row['% of Cap__1'] || row['__EMPTY'] || 0;
+                const capPercent2 = row['EPV % of Cap'] || 0;
                 const valueDiff = row['Value Difference'] || 0;
                 const capDiff = row['% of Cap Value Difference'] || 0;
 
@@ -654,7 +653,7 @@
             });
 
             const columnMap = ['Contract Type', 'Player', 'Team', 'Current Year Salary', '% of Cap', 
-                             'Current Year Projected Value', '% of Cap__1', 'Value Difference', '% of Cap Value Difference'];
+                             'Current Year Projected Value', 'EPV % of Cap', 'Value Difference', '% of Cap Value Difference'];
             const key = columnMap[columnIndex];
 
             filteredData.sort((a, b) => {
